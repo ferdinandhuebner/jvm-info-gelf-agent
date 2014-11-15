@@ -1,0 +1,4 @@
+[submodule "jvmtop"]
+	path = jvmtop
+	url = git@github.com:ferdinandhuebner/jvmtop.git
+	branch = master
