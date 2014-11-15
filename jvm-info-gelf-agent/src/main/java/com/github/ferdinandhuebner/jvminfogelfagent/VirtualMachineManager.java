@@ -7,8 +7,14 @@ import com.jvmtop.openjdk.tools.ProxyClient;
 import com.sun.tools.attach.AttachNotSupportedException;
 
 import java.io.IOException;
+import java.lang.management.GarbageCollectorMXBean;
+import java.lang.management.OperatingSystemMXBean;
+import java.lang.management.ThreadMXBean;
+import java.lang.reflect.Method;
+import java.util.Collection;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Convenience-Class to handle discovery and attachment to local virtual machines.
@@ -57,16 +63,185 @@ public class VirtualMachineManager {
     }
   }
 
+  private static final class VirtualMachineInformationBuilder {
+    private Double cpuLoad;
+    private Double gcLoad;
+    private Long totalCpuTime;
+    private Long totalGcTime;
+    private Long informationTime;
+
+    private static VirtualMachineInformationBuilder create() {
+      return new VirtualMachineInformationBuilder();
+    }
+
+    public VirtualMachineInformationBuilder withCpuLoad(double cpuLoad) {
+      this.cpuLoad = cpuLoad;
+      return this;
+    }
+
+    public VirtualMachineInformationBuilder withGcLoad(double gcLoad) {
+      this.gcLoad = gcLoad;
+      return this;
+    }
+
+    public VirtualMachineInformationBuilder withTotalCpu(long totalCpuTime) {
+      this.totalCpuTime = totalCpuTime;
+      return this;
+    }
+    public VirtualMachineInformationBuilder withTotalGcTime(long totalGcTime) {
+      this.totalGcTime = totalGcTime;
+      return this;
+    }
+
+    public VirtualMachineInformationBuilder withInformationTime(long informationTime) {
+      this.informationTime = informationTime;
+      return this;
+    }
+
+    private <T> T validateNotNull(T toValidate, String name) {
+      if (toValidate == null)
+        throw new IllegalArgumentException(name + " is null");
+      return toValidate;
+    }
+
+    public VirtualMachineInformation build() {
+      return new VirtualMachineInformation(
+              validateNotNull(informationTime, "informationTime"),
+              validateNotNull(cpuLoad, "cpuLoad"),
+              validateNotNull(gcLoad, "gcLoad"),
+              validateNotNull(totalCpuTime, "totalCpuTime"),
+              validateNotNull(totalGcTime, "totalGcTime"));
+    }
+
+  }
+
+  public static final class VirtualMachineInformation {
+    private final double cpuLoad;
+    private final double gcLoad;
+    private final long informationTime;
+    private final long totalCpu;
+    private final long totalGcTime;
+
+    private VirtualMachineInformation(long informationTime, double cpuLoad, double gcLoad, long totalCpu, long totalGcTime) {
+      this.informationTime = informationTime;
+      this.cpuLoad = cpuLoad;
+      this.gcLoad = gcLoad;
+      this.totalCpu = totalCpu;
+      this.totalGcTime = totalGcTime;
+    }
+
+    public double getCpuLoad() {
+      return cpuLoad;
+    }
+
+    public double getGcLoad() {
+      return gcLoad;
+    }
+  }
+
   /**
    * Representation of a virtual machine that can be monitored.
    */
   public static final class VirtualMachine {
     private final LocalVirtualMachine localVm;
     private final ProxyClient proxyClient;
+    private final AtomicReference<VirtualMachineInformation> vmInfo = new AtomicReference<>();
 
     private VirtualMachine(LocalVirtualMachine localVm, ProxyClient proxyClient) {
       this.localVm = localVm;
       this.proxyClient = proxyClient;
+    }
+
+    private VirtualMachineInformation initialVirtualMachineInformation() {
+      VirtualMachineInformationBuilder vmInfo = VirtualMachineInformationBuilder.create();
+      vmInfo.withInformationTime(System.nanoTime());
+      vmInfo.withTotalCpu(getTotalCpuNanos());
+      vmInfo.withTotalGcTime(getTotalGcTimeNanos());
+      vmInfo.withCpuLoad(0);
+      vmInfo.withGcLoad(0);
+      return vmInfo.build();
+    }
+
+    private VirtualMachineInformation createVirtualMachineInformation() {
+      VirtualMachineInformation last = vmInfo.get();
+      VirtualMachineInformationBuilder vmInfo = VirtualMachineInformationBuilder.create();
+      long now = System.nanoTime();
+      long deltaT = now - last.informationTime;
+      long totalCpuTimeNanos = getTotalCpuNanos();
+      long totalGcTimeNanos = getTotalGcTimeNanos();
+      long deltaCpu = totalCpuTimeNanos - last.totalCpu;
+      long deltaGc = totalGcTimeNanos - last.totalGcTime;
+
+      vmInfo.withInformationTime(now);
+      vmInfo.withTotalCpu(totalCpuTimeNanos);
+      vmInfo.withTotalGcTime(totalGcTimeNanos);
+      double cpuLoad = ((double) deltaCpu) / deltaT;
+      double gcLoad = ((double) deltaGc) / deltaT;
+      if (cpuLoad < 0d) { // strange things happen :(
+        cpuLoad = 0d;
+      }
+      if (gcLoad < 0d) { // strange things happen :(
+          gcLoad = 0d;
+      }
+      vmInfo.withCpuLoad(cpuLoad);
+      vmInfo.withGcLoad(gcLoad);
+
+      return vmInfo.build();
+    }
+
+    public VirtualMachineInformation getVirtualMachineInformation() {
+      VirtualMachineInformation info = createVirtualMachineInformation();
+      vmInfo.set(info);
+      return info;
+    }
+
+    private long getTotalGcTimeNanos() {
+      long totalGcTime = 0L;
+      try {
+        Collection<GarbageCollectorMXBean> gcBeans = proxyClient.getGarbageCollectorMXBeans();
+        for (GarbageCollectorMXBean gcBean : gcBeans) {
+          totalGcTime += gcBean.getCollectionTime() * 1000000L; // to ns
+        }
+        return totalGcTime;
+      } catch (Exception e) {
+        return 0L;
+      }
+    }
+
+    private long getTotalCpuNanos() {
+      long cpuNanos = getTotalCpuNanosOs();
+      if (cpuNanos == 0) {
+        return getTotalCpuThreads();
+      }
+      return cpuNanos;
+    }
+
+    private long getTotalCpuThreads() {
+      long totalCpu = 0L;
+      try {
+        ThreadMXBean threadBean = proxyClient.getThreadMXBean();
+        // we're missing the terminated threads here..
+        long[] threadIds = threadBean.getAllThreadIds();
+        for (long threadId : threadIds)
+          totalCpu += threadBean.getThreadCpuTime(threadId);
+        return totalCpu;
+      } catch (IOException | RuntimeException e) {
+        return 0L;
+      }
+    }
+
+    private long getTotalCpuNanosOs() {
+      try {
+        OperatingSystemMXBean osBean = proxyClient.getOperatingSystemMXBean();
+        Method method = osBean.getClass().getMethod("getProcessCpuTime");
+        method.setAccessible(true);
+        Long cpuTime = (Long) method.invoke(osBean);
+        if (cpuTime == null)
+          return 0L;
+        return cpuTime;
+      } catch (Exception e) {
+        return 0L;
+      }
     }
 
     /**
@@ -80,6 +255,7 @@ public class VirtualMachineManager {
         if (proxyClient.getConnectionState() == ConnectionState.DISCONNECTED) {
           throw new IOException("Connection to virtual machine with PID " + localVm.vmid() + " refused");
         }
+        vmInfo.set(initialVirtualMachineInformation());
       } catch (Exception e) {
         throw new IOException("Unable to connect to virtual machine with PID " + localVm.vmid(), e);
       }
@@ -158,6 +334,21 @@ public class VirtualMachineManager {
     LocalVirtualMachine localVm = asLocalVirtualMachine(vmDescriptor);
     ProxyClient proxyClient = ProxyClient.getProxyClient(localVm);
     return new VirtualMachine(localVm, proxyClient);
+  }
+
+  public static void main(String[] args) throws Exception {
+    VirtualMachineManager vmManager = new VirtualMachineManager();
+    VirtualMachineDescriptor vmDescriptor = vmManager.listLocalVirtualMachines().get(0);
+    VirtualMachine vm = vmManager.getVirtualMachine(vmDescriptor);
+    vm.attach();
+    System.out.println(vmDescriptor.comSunDescriptor);
+    for (int i = 0; i < 50; i++) {
+      VirtualMachineInformation vmInfo = vm.getVirtualMachineInformation();
+      System.out.println("CPU-Load: " + vmInfo.getCpuLoad());
+      System.out.println("GC-Load : " + vmInfo.getGcLoad());
+      Thread.sleep(500);
+    }
+    vm.detach();
   }
 
 }
