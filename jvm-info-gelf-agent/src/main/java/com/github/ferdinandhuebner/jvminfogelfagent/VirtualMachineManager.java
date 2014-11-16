@@ -213,7 +213,7 @@ public class VirtualMachineManager {
       out += "Loaded classes: " + vmInfo.getLoadedClasses() + "\n";
       out += "Live threads: " + vmInfo.getThreadCount() + " (" + vmInfo.getDaemonThreadCount() + " daemon threads)";
       System.out.println(out);
-      Thread.sleep(5000);
+      Thread.sleep(1000);
     }
     vm.detach();
   }

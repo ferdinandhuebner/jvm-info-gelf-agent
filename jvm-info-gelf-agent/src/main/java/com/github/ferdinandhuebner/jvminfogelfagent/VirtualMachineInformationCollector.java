@@ -125,10 +125,21 @@ class VirtualMachineInformationCollector {
         totalGcOldNanos += gcInfo.gcTimeFor(oldGc).or(0L);
         totalGcOldEvents += gcInfo.gcCountFor(oldGc).or(0L);
       }
+      long newYoungGenGcEvents = 0L;
+      long newOldGenGcEvents = 0L;
+      long newGcCounts = 0L;
+
+      double gcLoad = 0.0d;
+      double youngGcLoad = 0.0d;
+      double oldGcLoad = 0.0d;
+
       garbageCollectorInformation = new DetailedGarbageCollectorInformation(gcInfo.getTotalGcCount(),
               gcInfo.getTotalGcTimeNanos(),
-              0L, 0.0d, totalGcYoungEvents, 0L, totalGcOldEvents, 0L,
-              totalGcYoungNanos, 0d, totalGcOldNanos, 0d, youngGenCollectors, oldGenCollectors);
+              newGcCounts, gcLoad, totalGcYoungEvents, newYoungGenGcEvents,
+              totalGcOldEvents, newOldGenGcEvents,
+              totalGcYoungNanos, youngGcLoad,
+              totalGcOldNanos, oldGcLoad,
+              youngGenCollectors, oldGenCollectors);
     } else {
       garbageCollectorInformation = new GarbageCollectorInformation(gcInfo.getTotalGcCount(), gcInfo.getTotalGcTimeNanos(), 0L, 0d);
     }
@@ -161,9 +172,9 @@ class VirtualMachineInformationCollector {
         totalGcOldNanos += gcInfo.gcTimeFor(oldGc).or(0L);
         totalGcOldEvents += gcInfo.gcCountFor(oldGc).or(0L);
       }
-      long newYoungGenGcEvents = totalGcYoungEvents - previousDetailed.getYoungGenerationGcCount();
-      long newOldGenGcEvents = totalGcOldEvents - previousDetailed.getOldGenerationGcCount();
-      long newGcCounts = (totalGcOldEvents + totalGcYoungNanos) - previousDetailed.totalOldGcCount;
+      long newYoungGenGcEvents = totalGcYoungEvents - previousDetailed.totalYoungGcCount;
+      long newOldGenGcEvents = totalGcOldEvents - previousDetailed.totalOldGcCount;
+      long newGcCounts = (totalGcOldEvents + totalGcYoungEvents) - previousDetailed.totalGcCount;
 
       long newGcTime = (totalGcYoungNanos + totalGcOldNanos) - previous.totalGcTime;
       long newYoungGcTime = totalGcYoungNanos - previousDetailed.totalYoungGctime;
