@@ -1,5 +1,7 @@
 package com.github.ferdinandhuebner.jvminfogelfagent;
 
+import com.github.ferdinandhuebner.jvminfogelfagent.VirtualMachineValueExtractors.GcInfoExtractor.GcInformation;
+import com.github.ferdinandhuebner.jvminfogelfagent.VirtualMachineInformation.VirtualMachineInformationBuilder;
 import com.google.common.base.Optional;
 import com.google.common.collect.ImmutableList;
 import com.jvmtop.openjdk.tools.ConnectionState;
@@ -8,11 +10,6 @@ import com.jvmtop.openjdk.tools.ProxyClient;
 import com.sun.tools.attach.AttachNotSupportedException;
 
 import java.io.IOException;
-import java.lang.management.GarbageCollectorMXBean;
-import java.lang.management.OperatingSystemMXBean;
-import java.lang.management.ThreadMXBean;
-import java.lang.reflect.Method;
-import java.util.Collection;
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicReference;
@@ -64,82 +61,6 @@ public class VirtualMachineManager {
     }
   }
 
-  private static final class VirtualMachineInformationBuilder {
-    private Double cpuLoad;
-    private Double gcLoad;
-    private Long totalCpuTime;
-    private Long totalGcTime;
-    private Long informationTime;
-
-    private static VirtualMachineInformationBuilder create() {
-      return new VirtualMachineInformationBuilder();
-    }
-
-    public VirtualMachineInformationBuilder withCpuLoad(double cpuLoad) {
-      this.cpuLoad = cpuLoad;
-      return this;
-    }
-
-    public VirtualMachineInformationBuilder withGcLoad(double gcLoad) {
-      this.gcLoad = gcLoad;
-      return this;
-    }
-
-    public VirtualMachineInformationBuilder withTotalCpu(long totalCpuTime) {
-      this.totalCpuTime = totalCpuTime;
-      return this;
-    }
-    public VirtualMachineInformationBuilder withTotalGcTime(long totalGcTime) {
-      this.totalGcTime = totalGcTime;
-      return this;
-    }
-
-    public VirtualMachineInformationBuilder withInformationTime(long informationTime) {
-      this.informationTime = informationTime;
-      return this;
-    }
-
-    private <T> T validateNotNull(T toValidate, String name) {
-      if (toValidate == null)
-        throw new IllegalArgumentException(name + " is null");
-      return toValidate;
-    }
-
-    public VirtualMachineInformation build() {
-      return new VirtualMachineInformation(
-              validateNotNull(informationTime, "informationTime"),
-              validateNotNull(cpuLoad, "cpuLoad"),
-              validateNotNull(gcLoad, "gcLoad"),
-              validateNotNull(totalCpuTime, "totalCpuTime"),
-              validateNotNull(totalGcTime, "totalGcTime"));
-    }
-
-  }
-
-  public static final class VirtualMachineInformation {
-    private final double cpuLoad;
-    private final double gcLoad;
-    private final long informationTime;
-    private final long totalCpu;
-    private final long totalGcTime;
-
-    private VirtualMachineInformation(long informationTime, double cpuLoad, double gcLoad, long totalCpu, long totalGcTime) {
-      this.informationTime = informationTime;
-      this.cpuLoad = cpuLoad;
-      this.gcLoad = gcLoad;
-      this.totalCpu = totalCpu;
-      this.totalGcTime = totalGcTime;
-    }
-
-    public double getCpuLoad() {
-      return cpuLoad;
-    }
-
-    public double getGcLoad() {
-      return gcLoad;
-    }
-  }
-
   /**
    * Representation of a virtual machine that can be monitored.
    */
@@ -149,21 +70,27 @@ public class VirtualMachineManager {
     private final AtomicReference<VirtualMachineInformation> vmInfo = new AtomicReference<>();
 
     private final VirtualMachineValueExtractor<Optional<Long>> cpuTimeExtractor;
-    private final VirtualMachineValueExtractor<Optional<Long>> gcTimeExtractor;
+    private final VirtualMachineValueExtractor<Optional<GcInformation>> gcTimeExtractor;
 
     private VirtualMachine(LocalVirtualMachine localVm, ProxyClient proxyClient) {
       this.localVm = localVm;
       this.proxyClient = proxyClient;
 
       cpuTimeExtractor = VirtualMachineValueExtractors.totalCpuUsed();
-      gcTimeExtractor = VirtualMachineValueExtractors.totalGcTime();
+      gcTimeExtractor = VirtualMachineValueExtractors.gcInfo();
     }
 
     private VirtualMachineInformation initialVirtualMachineInformation() {
       VirtualMachineInformationBuilder vmInfo = VirtualMachineInformationBuilder.create();
       vmInfo.withInformationTime(System.nanoTime());
       vmInfo.withTotalCpu(cpuTimeExtractor.apply(proxyClient).or(0L));
-      vmInfo.withTotalGcTime(gcTimeExtractor.apply(proxyClient).or(0L));
+      Optional<GcInformation> gcInfo = gcTimeExtractor.apply(proxyClient);
+      if (gcInfo.isPresent()) {
+        GcInformation info = gcInfo.get();
+        vmInfo.withTotalGcTime(info.getTotalGcTimeNanos());
+      } else {
+        vmInfo.withTotalGcTime(0L);
+      }
       vmInfo.withCpuLoad(0);
       vmInfo.withGcLoad(0);
       return vmInfo.build();
@@ -175,7 +102,13 @@ public class VirtualMachineManager {
       long now = System.nanoTime();
       long deltaT = now - last.informationTime;
       long totalCpuTimeNanos = cpuTimeExtractor.apply(proxyClient).or(0L);
-      long totalGcTimeNanos = gcTimeExtractor.apply(proxyClient).or(0L);
+
+      long totalGcTimeNanos = 0L;
+      Optional<GcInformation> gcInfo = gcTimeExtractor.apply(proxyClient);
+      if (gcInfo.isPresent()) {
+        GcInformation info = gcInfo.get();
+        totalGcTimeNanos = info.getTotalGcTimeNanos();
+      }
       long deltaCpu = totalCpuTimeNanos - last.totalCpu;
       long deltaGc = totalGcTimeNanos - last.totalGcTime;
 
@@ -300,7 +233,7 @@ public class VirtualMachineManager {
     VirtualMachine vm = vmManager.getVirtualMachine(vmDescriptor);
     vm.attach();
     System.out.println(vmDescriptor.comSunDescriptor);
-    for (int i = 0; i < 50; i++) {
+    for (int i = 0; i < 500000; i++) {
       VirtualMachineInformation vmInfo = vm.getVirtualMachineInformation();
       System.out.println("CPU-Load: " + vmInfo.getCpuLoad());
       System.out.println("GC-Load : " + vmInfo.getGcLoad());
