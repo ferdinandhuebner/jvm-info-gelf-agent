@@ -1,5 +1,6 @@
 package com.github.ferdinandhuebner.jvminfogelfagent;
 
+import com.google.common.base.Optional;
 import com.google.common.collect.ImmutableList;
 import com.jvmtop.openjdk.tools.ConnectionState;
 import com.jvmtop.openjdk.tools.LocalVirtualMachine;
@@ -147,16 +148,22 @@ public class VirtualMachineManager {
     private final ProxyClient proxyClient;
     private final AtomicReference<VirtualMachineInformation> vmInfo = new AtomicReference<>();
 
+    private final VirtualMachineValueExtractor<Optional<Long>> cpuTimeExtractor;
+    private final VirtualMachineValueExtractor<Optional<Long>> gcTimeExtractor;
+
     private VirtualMachine(LocalVirtualMachine localVm, ProxyClient proxyClient) {
       this.localVm = localVm;
       this.proxyClient = proxyClient;
+
+      cpuTimeExtractor = VirtualMachineValueExtractors.totalCpuUsed();
+      gcTimeExtractor = VirtualMachineValueExtractors.totalGcTime();
     }
 
     private VirtualMachineInformation initialVirtualMachineInformation() {
       VirtualMachineInformationBuilder vmInfo = VirtualMachineInformationBuilder.create();
       vmInfo.withInformationTime(System.nanoTime());
-      vmInfo.withTotalCpu(getTotalCpuNanos());
-      vmInfo.withTotalGcTime(getTotalGcTimeNanos());
+      vmInfo.withTotalCpu(cpuTimeExtractor.apply(proxyClient).or(0L));
+      vmInfo.withTotalGcTime(gcTimeExtractor.apply(proxyClient).or(0L));
       vmInfo.withCpuLoad(0);
       vmInfo.withGcLoad(0);
       return vmInfo.build();
@@ -167,8 +174,8 @@ public class VirtualMachineManager {
       VirtualMachineInformationBuilder vmInfo = VirtualMachineInformationBuilder.create();
       long now = System.nanoTime();
       long deltaT = now - last.informationTime;
-      long totalCpuTimeNanos = getTotalCpuNanos();
-      long totalGcTimeNanos = getTotalGcTimeNanos();
+      long totalCpuTimeNanos = cpuTimeExtractor.apply(proxyClient).or(0L);
+      long totalGcTimeNanos = gcTimeExtractor.apply(proxyClient).or(0L);
       long deltaCpu = totalCpuTimeNanos - last.totalCpu;
       long deltaGc = totalGcTimeNanos - last.totalGcTime;
 
@@ -177,10 +184,10 @@ public class VirtualMachineManager {
       vmInfo.withTotalGcTime(totalGcTimeNanos);
       double cpuLoad = ((double) deltaCpu) / deltaT;
       double gcLoad = ((double) deltaGc) / deltaT;
-      if (cpuLoad < 0d) { // strange things happen :(
+      if (cpuLoad < 0d) { // strange things happen...
         cpuLoad = 0d;
       }
-      if (gcLoad < 0d) { // strange things happen :(
+      if (gcLoad < 0d) { // strange things happen...
           gcLoad = 0d;
       }
       vmInfo.withCpuLoad(cpuLoad);
@@ -193,55 +200,6 @@ public class VirtualMachineManager {
       VirtualMachineInformation info = createVirtualMachineInformation();
       vmInfo.set(info);
       return info;
-    }
-
-    private long getTotalGcTimeNanos() {
-      long totalGcTime = 0L;
-      try {
-        Collection<GarbageCollectorMXBean> gcBeans = proxyClient.getGarbageCollectorMXBeans();
-        for (GarbageCollectorMXBean gcBean : gcBeans) {
-          totalGcTime += gcBean.getCollectionTime() * 1000000L; // to ns
-        }
-        return totalGcTime;
-      } catch (Exception e) {
-        return 0L;
-      }
-    }
-
-    private long getTotalCpuNanos() {
-      long cpuNanos = getTotalCpuNanosOs();
-      if (cpuNanos == 0) {
-        return getTotalCpuThreads();
-      }
-      return cpuNanos;
-    }
-
-    private long getTotalCpuThreads() {
-      long totalCpu = 0L;
-      try {
-        ThreadMXBean threadBean = proxyClient.getThreadMXBean();
-        // we're missing the terminated threads here..
-        long[] threadIds = threadBean.getAllThreadIds();
-        for (long threadId : threadIds)
-          totalCpu += threadBean.getThreadCpuTime(threadId);
-        return totalCpu;
-      } catch (IOException | RuntimeException e) {
-        return 0L;
-      }
-    }
-
-    private long getTotalCpuNanosOs() {
-      try {
-        OperatingSystemMXBean osBean = proxyClient.getOperatingSystemMXBean();
-        Method method = osBean.getClass().getMethod("getProcessCpuTime");
-        method.setAccessible(true);
-        Long cpuTime = (Long) method.invoke(osBean);
-        if (cpuTime == null)
-          return 0L;
-        return cpuTime;
-      } catch (Exception e) {
-        return 0L;
-      }
     }
 
     /**
