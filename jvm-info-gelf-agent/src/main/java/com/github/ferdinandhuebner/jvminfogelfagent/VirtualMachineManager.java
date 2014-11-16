@@ -67,72 +67,18 @@ public class VirtualMachineManager {
   public static final class VirtualMachine {
     private final LocalVirtualMachine localVm;
     private final ProxyClient proxyClient;
-    private final AtomicReference<VirtualMachineInformation> vmInfo = new AtomicReference<>();
-
-    private final VirtualMachineValueExtractor<Optional<Long>> cpuTimeExtractor;
-    private final VirtualMachineValueExtractor<Optional<GcInformation>> gcTimeExtractor;
+    private final VirtualMachineInformationCollector vmInfoCollector;
 
     private VirtualMachine(LocalVirtualMachine localVm, ProxyClient proxyClient) {
       this.localVm = localVm;
       this.proxyClient = proxyClient;
-
-      cpuTimeExtractor = VirtualMachineValueExtractors.totalCpuUsed();
-      gcTimeExtractor = VirtualMachineValueExtractors.gcInfo();
+      vmInfoCollector = new VirtualMachineInformationCollector(proxyClient);
     }
 
-    private VirtualMachineInformation initialVirtualMachineInformation() {
-      VirtualMachineInformationBuilder vmInfo = VirtualMachineInformationBuilder.create();
-      vmInfo.withInformationTime(System.nanoTime());
-      vmInfo.withTotalCpu(cpuTimeExtractor.apply(proxyClient).or(0L));
-      Optional<GcInformation> gcInfo = gcTimeExtractor.apply(proxyClient);
-      if (gcInfo.isPresent()) {
-        GcInformation info = gcInfo.get();
-        vmInfo.withTotalGcTime(info.getTotalGcTimeNanos());
-      } else {
-        vmInfo.withTotalGcTime(0L);
-      }
-      vmInfo.withCpuLoad(0);
-      vmInfo.withGcLoad(0);
-      return vmInfo.build();
-    }
 
-    private VirtualMachineInformation createVirtualMachineInformation() {
-      VirtualMachineInformation last = vmInfo.get();
-      VirtualMachineInformationBuilder vmInfo = VirtualMachineInformationBuilder.create();
-      long now = System.nanoTime();
-      long deltaT = now - last.informationTime;
-      long totalCpuTimeNanos = cpuTimeExtractor.apply(proxyClient).or(0L);
-
-      long totalGcTimeNanos = 0L;
-      Optional<GcInformation> gcInfo = gcTimeExtractor.apply(proxyClient);
-      if (gcInfo.isPresent()) {
-        GcInformation info = gcInfo.get();
-        totalGcTimeNanos = info.getTotalGcTimeNanos();
-      }
-      long deltaCpu = totalCpuTimeNanos - last.totalCpu;
-      long deltaGc = totalGcTimeNanos - last.totalGcTime;
-
-      vmInfo.withInformationTime(now);
-      vmInfo.withTotalCpu(totalCpuTimeNanos);
-      vmInfo.withTotalGcTime(totalGcTimeNanos);
-      double cpuLoad = ((double) deltaCpu) / deltaT;
-      double gcLoad = ((double) deltaGc) / deltaT;
-      if (cpuLoad < 0d) { // strange things happen...
-        cpuLoad = 0d;
-      }
-      if (gcLoad < 0d) { // strange things happen...
-          gcLoad = 0d;
-      }
-      vmInfo.withCpuLoad(cpuLoad);
-      vmInfo.withGcLoad(gcLoad);
-
-      return vmInfo.build();
-    }
 
     public VirtualMachineInformation getVirtualMachineInformation() {
-      VirtualMachineInformation info = createVirtualMachineInformation();
-      vmInfo.set(info);
-      return info;
+      return vmInfoCollector.createVirtualMachineInformation();
     }
 
     /**
@@ -146,7 +92,7 @@ public class VirtualMachineManager {
         if (proxyClient.getConnectionState() == ConnectionState.DISCONNECTED) {
           throw new IOException("Connection to virtual machine with PID " + localVm.vmid() + " refused");
         }
-        vmInfo.set(initialVirtualMachineInformation());
+        vmInfoCollector.initialize();
       } catch (Exception e) {
         throw new IOException("Unable to connect to virtual machine with PID " + localVm.vmid(), e);
       }
