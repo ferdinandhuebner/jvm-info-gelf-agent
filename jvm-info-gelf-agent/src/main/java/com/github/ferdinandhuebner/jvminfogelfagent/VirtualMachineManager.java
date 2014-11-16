@@ -181,8 +181,18 @@ public class VirtualMachineManager {
     System.out.println(vmDescriptor.comSunDescriptor);
     for (int i = 0; i < 500000; i++) {
       VirtualMachineInformation vmInfo = vm.getVirtualMachineInformation();
-      System.out.println("CPU-Load: " + vmInfo.getCpuLoad());
-      System.out.println("GC-Load : " + vmInfo.getGcLoad());
+      String out = "CPU: " + vmInfo.getCpuLoad() + ", ";
+      VirtualMachineInformation.GarbageCollectorInformation gcInfo = vmInfo.getGcInformation();
+      if (gcInfo instanceof VirtualMachineInformation.DetailedGarbageCollectorInformation) {
+        VirtualMachineInformation.DetailedGarbageCollectorInformation detailedGcInfo = (VirtualMachineInformation.DetailedGarbageCollectorInformation)gcInfo;
+        out += "GC: " + detailedGcInfo.getGcLoad() + " (";
+        out += "young: " + detailedGcInfo.getYoungGenerationGcLoad() + ", " + detailedGcInfo.getYoungGenerationGcCount() + " events, ";
+        out += "old: " + detailedGcInfo.getOldGenerationGcLoad() + ", " + detailedGcInfo.getOldGenerationGcCount() + " events)";
+        out += " young gc: " + detailedGcInfo.getYoungGenerationGarbageCollectors() + ", old gc: " + detailedGcInfo.getOldGenerationGarbageCollectors();
+      } else {
+        out += "GC: " + gcInfo.getGcLoad() + " (" + gcInfo.getGcCount() + " gc events)";
+      }
+      System.out.println(out);
       Thread.sleep(500);
     }
     vm.detach();

@@ -101,6 +101,13 @@ public class VirtualMachineValueExtractors {
         return totalGcTime;
       }
 
+      public long getTotalGcCount() {
+        long totalGc = 0L;
+        for (GarbageCollectorInfo info : gcInfo.values())
+          totalGc += info.gcCount;
+        return totalGc;
+      }
+
       /**
        * Returns a list of the names of known garbage collectors.
        */
@@ -129,6 +136,7 @@ public class VirtualMachineValueExtractors {
 
       /**
        * Returns the number of garbage collection events for the given garbage collector.
+       *
        * @param garbageCollector the garbage collector name, not {@code null}
        */
       public Optional<Long> gcCountFor(String garbageCollector) {
@@ -139,19 +147,6 @@ public class VirtualMachineValueExtractors {
             return input.gcCount;
           }
         });
-      }
-    }
-
-    private Optional<Long> getTotalGcTimeNanos(ProxyClient proxyClient) {
-      long totalGcTime = 0L;
-      try {
-        Collection<GarbageCollectorMXBean> gcBeans = proxyClient.getGarbageCollectorMXBeans();
-        for (GarbageCollectorMXBean gcBean : gcBeans) {
-          totalGcTime += gcBean.getCollectionTime() * 1000000L; // to ns
-        }
-        return Optional.of(totalGcTime);
-      } catch (Exception e) {
-        return Optional.absent();
       }
     }
 
