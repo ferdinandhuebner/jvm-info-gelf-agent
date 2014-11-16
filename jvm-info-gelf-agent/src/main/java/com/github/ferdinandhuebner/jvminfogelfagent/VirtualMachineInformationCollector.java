@@ -44,6 +44,7 @@ class VirtualMachineInformationCollector {
   private final VirtualMachineValueExtractor<Optional<NonHeapInformation>> nonHeapInfoExtractor;
   private final VirtualMachineValueExtractor<Optional<Integer>> loadedClassesExtractor;
   private final VirtualMachineValueExtractor<Optional<VirtualMachineValueExtractors.ThreadInformation>> threadInfoExtractor;
+  private final VirtualMachineValueExtractor<Optional<String>> hostNameExtractor;
 
   public VirtualMachineInformationCollector(ProxyClient proxyClient) {
     this.proxyClient = proxyClient;
@@ -54,6 +55,7 @@ class VirtualMachineInformationCollector {
     nonHeapInfoExtractor = VirtualMachineValueExtractors.nonHeapInfo();
     loadedClassesExtractor = VirtualMachineValueExtractors.loadedClasses();
     threadInfoExtractor = VirtualMachineValueExtractors.threadInformation();
+    hostNameExtractor = VirtualMachineValueExtractors.hostName();
   }
 
   VirtualMachineInformation initialize() {
@@ -76,6 +78,7 @@ class VirtualMachineInformationCollector {
       vmInfoBuilder.withThreadCount(0);
       vmInfoBuilder.withDaemonThreadCount(0);
     }
+    vmInfoBuilder.withHostName(hostNameExtractor.apply(proxyClient).or("<unknown>"));
 
     VirtualMachineInformation machineInformation = vmInfoBuilder.build();
     vmInfo.set(machineInformation);
@@ -225,6 +228,7 @@ class VirtualMachineInformationCollector {
       vmInfoBuilder.withThreadCount(0);
       vmInfoBuilder.withDaemonThreadCount(0);
     }
+    vmInfoBuilder.withHostName(hostNameExtractor.apply(proxyClient).or("<unknown>"));
 
     VirtualMachineInformation value = vmInfoBuilder.build();
     this.vmInfo.set(value);

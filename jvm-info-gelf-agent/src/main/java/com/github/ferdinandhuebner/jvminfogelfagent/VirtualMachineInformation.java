@@ -14,6 +14,7 @@ public final class VirtualMachineInformation {
     private Integer loadedClasses;
     private Integer threadCount;
     private Integer daemonThreadCount;
+    private String hostName;
 
     static VirtualMachineInformationBuilder create() {
       return new VirtualMachineInformationBuilder();
@@ -64,6 +65,11 @@ public final class VirtualMachineInformation {
       return this;
     }
 
+    public VirtualMachineInformationBuilder withHostName(String hostName) {
+      this.hostName = hostName;
+      return this;
+    }
+
     private <T> T validateNotNull(T toValidate, String name) {
       if (toValidate == null)
         throw new IllegalArgumentException(name + " is null");
@@ -80,7 +86,8 @@ public final class VirtualMachineInformation {
               validateNotNull(nonHeapInformation, "nonHeapInformation"),
               validateNotNull(loadedClasses, "loadedClasses"),
               validateNotNull(threadCount, "threadCount"),
-              validateNotNull(daemonThreadCount, "daemonThreadCount"));
+              validateNotNull(daemonThreadCount, "daemonThreadCount"),
+              validateNotNull(hostName, "hostName"));
     }
   }
 
@@ -199,6 +206,7 @@ public final class VirtualMachineInformation {
   private final int loadedClasses;
   private final int threadCount;
   private final int daemonThreadCount;
+  private final String hostName;
 
   final long informationTime;
   final long totalCpu;
@@ -207,7 +215,8 @@ public final class VirtualMachineInformation {
                             GarbageCollectorInformation gcInformation, long totalCpu,
                             VirtualMachineValueExtractors.HeapInformation heapInformation,
                             VirtualMachineValueExtractors.NonHeapInformation nonHeapInformation,
-                            int loadedClasses, int threadCount, int daemonThreadCount) {
+                            int loadedClasses, int threadCount, int daemonThreadCount,
+                            String hostName) {
 
     this.cpuLoad = cpuLoad;
     this.gcInformation = gcInformation;
@@ -216,6 +225,7 @@ public final class VirtualMachineInformation {
     this.loadedClasses = loadedClasses;
     this.threadCount = threadCount;
     this.daemonThreadCount = daemonThreadCount;
+    this.hostName = hostName;
 
     this.informationTime = informationTime;
     this.totalCpu = totalCpu;
@@ -247,5 +257,9 @@ public final class VirtualMachineInformation {
 
   public int getDaemonThreadCount() {
     return daemonThreadCount;
+  }
+
+  public String getHostName() {
+    return hostName;
   }
 }

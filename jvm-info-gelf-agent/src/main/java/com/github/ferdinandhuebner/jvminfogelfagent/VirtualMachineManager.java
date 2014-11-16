@@ -7,14 +7,14 @@ import com.jvmtop.openjdk.tools.ProxyClient;
 import com.sun.tools.attach.AttachNotSupportedException;
 
 import java.io.IOException;
-import java.text.DecimalFormat;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Convenience-Class to handle discovery and attachment to local virtual machines.
  * Wraps all com.sun classes into more convenient ones.
- *
+ * <p/>
  * TODO: Use JVisualVM code instead of jvmtop/jconsole
  */
 public class VirtualMachineManager {
@@ -65,6 +65,7 @@ public class VirtualMachineManager {
    */
   public static final class VirtualMachine {
     private final LocalVirtualMachine localVm;
+    private final AtomicBoolean seemsConnected = new AtomicBoolean(true);
     private final ProxyClient proxyClient;
     private final VirtualMachineInformationCollector vmInfoCollector;
 
@@ -75,9 +76,14 @@ public class VirtualMachineManager {
     }
 
 
-    public VirtualMachineInformation getVirtualMachineInformation() {
-      proxyClient.flush();
-      return vmInfoCollector.createVirtualMachineInformation();
+    public VirtualMachineInformation getVirtualMachineInformation() throws IOException {
+      try {
+        proxyClient.flush();
+        return vmInfoCollector.createVirtualMachineInformation();
+      } catch (RuntimeException e) {
+        seemsConnected.set(false);
+        throw new IOException("Disconnected from virtual machine", e);
+      }
     }
 
     /**
@@ -105,6 +111,10 @@ public class VirtualMachineManager {
      */
     public void detach() throws IOException {
       proxyClient.disconnect();
+    }
+
+    public boolean isAttached() {
+      return seemsConnected.get();
     }
   }
 
@@ -155,7 +165,7 @@ public class VirtualMachineManager {
       int processId = Integer.parseInt(vmDescriptor.id());
       String displayName = vmDescriptor.displayName();
       boolean attachable = canAttach(vmDescriptor);
-      localVms.add(new VirtualMachineDescriptor(vmDescriptor, processId, displayName, attachable));
+      localVms.add(new VirtualMachineDescriptor(vmDescriptor, processId, displayName == null ? "<unknown>" : displayName, attachable));
     }
     return localVms.build();
   }
@@ -171,51 +181,6 @@ public class VirtualMachineManager {
     LocalVirtualMachine localVm = asLocalVirtualMachine(vmDescriptor);
     ProxyClient proxyClient = ProxyClient.getProxyClient(localVm);
     return new VirtualMachine(localVm, proxyClient);
-  }
-
-  public static void main(String[] args) throws Exception {
-
-    DecimalFormat formatter = new DecimalFormat("#0.00");
-    DecimalFormat longFormatter = new DecimalFormat("#0");
-    longFormatter.setGroupingSize(3);
-    longFormatter.setGroupingUsed(true);
-
-
-    VirtualMachineManager vmManager = new VirtualMachineManager();
-    VirtualMachineDescriptor vmDescriptor = null;
-    for (VirtualMachineDescriptor desc : vmManager.listLocalVirtualMachines()) {
-      if (desc.getDisplayName().contains("ntelli")) {
-        vmDescriptor = desc;
-      }
-    }
-    VirtualMachine vm = vmManager.getVirtualMachine(vmDescriptor);
-    vm.attach();
-    System.out.println(vmDescriptor.comSunDescriptor);
-    for (int i = 0; i < 500000; i++) {
-      VirtualMachineInformation vmInfo = vm.getVirtualMachineInformation();
-      String out = "CPU: " + formatter.format(vmInfo.getCpuLoad()) + ", ";
-      VirtualMachineInformation.GarbageCollectorInformation gcInfo = vmInfo.getGcInformation();
-      if (gcInfo instanceof VirtualMachineInformation.DetailedGarbageCollectorInformation) {
-        VirtualMachineInformation.DetailedGarbageCollectorInformation detailedGcInfo = (VirtualMachineInformation.DetailedGarbageCollectorInformation) gcInfo;
-        out += "GC: " + formatter.format(detailedGcInfo.getGcLoad()) + " (";
-        out += "young: " + formatter.format(detailedGcInfo.getYoungGenerationGcLoad()) + ", " + detailedGcInfo.getYoungGenerationGcCount() + " events, ";
-        out += "old: " + formatter.format(detailedGcInfo.getOldGenerationGcLoad()) + ", " + detailedGcInfo.getOldGenerationGcCount() + " events)";
-        out += " young gc: " + detailedGcInfo.getYoungGenerationGarbageCollectors() + ", old gc: " + detailedGcInfo.getOldGenerationGarbageCollectors();
-      } else {
-        out += "GC: " + formatter.format(gcInfo.getGcLoad()) + " (" + gcInfo.getGcCount() + " gc events)";
-      }
-      VirtualMachineValueExtractors.HeapInformation heap = vmInfo.getHeapInformation();
-      out += "\nHeap: " + longFormatter.format(heap.getHeapUsed()) + " / " + longFormatter.format(heap.getHeapSize());
-      out += " (" + longFormatter.format(heap.getHeapMax()) + " max)";
-      VirtualMachineValueExtractors.NonHeapInformation nonHeap = vmInfo.getNonHeapInformation();
-      out += "\nNon-Heap: " + longFormatter.format(nonHeap.getNonHeapUsed()) + " / " + longFormatter.format(nonHeap.getNonHeapSize());
-      out += " (" + longFormatter.format(nonHeap.getNonHeapMax()) + " max)\n";
-      out += "Loaded classes: " + vmInfo.getLoadedClasses() + "\n";
-      out += "Live threads: " + vmInfo.getThreadCount() + " (" + vmInfo.getDaemonThreadCount() + " daemon threads)";
-      System.out.println(out);
-      Thread.sleep(1000);
-    }
-    vm.detach();
   }
 
 }

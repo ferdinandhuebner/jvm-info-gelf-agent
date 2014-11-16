@@ -41,6 +41,10 @@ public class VirtualMachineValueExtractors {
     return new ThreadInformationExtractor();
   }
 
+  public static HostNameExtractor hostName() {
+    return new HostNameExtractor();
+  }
+
   /**
    * Extracts the total CPU time used from a virtual machine.
    */
@@ -315,4 +319,20 @@ public class VirtualMachineValueExtractors {
     }
   }
 
+  public static final class HostNameExtractor implements VirtualMachineValueExtractor<Optional<String>> {
+    @Override
+    public Optional<String> apply(ProxyClient proxyClient) {
+      try {
+        String runtimeName = proxyClient.getRuntimeMXBean().getName();
+        int indexOfAt = runtimeName.indexOf("@");
+        if (indexOfAt == -1) {
+          return Optional.absent();
+        } else {
+          return Optional.of(runtimeName.substring(indexOfAt + 1, runtimeName.length()));
+        }
+      } catch (IOException e) {
+        return Optional.absent();
+      }
+    }
+  }
 }
