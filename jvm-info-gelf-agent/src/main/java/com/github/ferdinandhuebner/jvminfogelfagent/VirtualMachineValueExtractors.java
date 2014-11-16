@@ -1,6 +1,8 @@
 package com.github.ferdinandhuebner.jvminfogelfagent;
 
+import com.google.common.base.Function;
 import com.google.common.base.Optional;
+import com.google.common.collect.ImmutableList;
 import com.jvmtop.openjdk.tools.ProxyClient;
 
 import java.io.IOException;
@@ -8,7 +10,7 @@ import java.lang.management.GarbageCollectorMXBean;
 import java.lang.management.OperatingSystemMXBean;
 import java.lang.management.ThreadMXBean;
 import java.lang.reflect.Method;
-import java.util.Collection;
+import java.util.*;
 
 /**
  * Collection of {@link com.github.ferdinandhuebner.jvminfogelfagent.VirtualMachineValueExtractor} objects.
@@ -18,8 +20,9 @@ public class VirtualMachineValueExtractors {
   public static TotalCpuTimeNanosUsedExtractor totalCpuUsed() {
     return new TotalCpuTimeNanosUsedExtractor();
   }
-  public static TotalGcTimeUsedNanosExtractor totalGcTime() {
-    return new TotalGcTimeUsedNanosExtractor();
+
+  public static GcInfoExtractor gcInfo() {
+    return new GcInfoExtractor();
   }
 
   /**
@@ -61,9 +64,84 @@ public class VirtualMachineValueExtractors {
   }
 
   /**
-   * Extracts the total CPU time used for garbage collection from a virtual machine.
+   * Extracts garbage collector information from a virtual machine.
    */
-  public static final class TotalGcTimeUsedNanosExtractor implements VirtualMachineValueExtractor<Optional<Long>> {
+  public static final class GcInfoExtractor implements VirtualMachineValueExtractor<Optional<GcInfoExtractor.GcInformation>> {
+    private static final class GarbageCollectorInfo {
+      private final String gcName;
+      private final long gcCount;
+      private final long gcTimeNanos;
+
+      // TODO might be useful to classify young/old generation garbage collectors
+
+      public GarbageCollectorInfo(String gcName, long gcCount, long gcTimeNanos) {
+        this.gcName = gcName;
+        this.gcCount = gcCount;
+        this.gcTimeNanos = gcTimeNanos;
+      }
+    }
+
+    /**
+     * Information on garbage collectors.
+     */
+    public static final class GcInformation {
+      private final Map<String, GarbageCollectorInfo> gcInfo = new HashMap<>();
+
+      private void addGcInfo(GarbageCollectorInfo info) {
+        gcInfo.put(info.gcName, info);
+      }
+
+      /**
+       * Returns the total cpu time (in nanoseconds) used for garbage collection by all garbage collectors.
+       */
+      public long getTotalGcTimeNanos() {
+        long totalGcTime = 0L;
+        for (GarbageCollectorInfo info : gcInfo.values())
+          totalGcTime += info.gcTimeNanos;
+        return totalGcTime;
+      }
+
+      /**
+       * Returns a list of the names of known garbage collectors.
+       */
+      public List<String> getGarbageCollectors() {
+        ImmutableList.Builder<String> builder = ImmutableList.builder();
+        for (GarbageCollectorInfo info : gcInfo.values()) {
+          builder.add(info.gcName);
+        }
+        return builder.build();
+      }
+
+      /**
+       * Returns the cpu time (in nanoseconds) the given garbage collector used for garbage collection.
+       *
+       * @param garbageCollector the garbage collector name, not {@code null}
+       */
+      public Optional<Long> gcTimeFor(String garbageCollector) {
+        Objects.requireNonNull(garbageCollector);
+        return Optional.of(gcInfo.get(garbageCollector)).transform(new Function<GarbageCollectorInfo, Long>() {
+          @Override
+          public Long apply(GarbageCollectorInfo input) {
+            return input.gcTimeNanos;
+          }
+        });
+      }
+
+      /**
+       * Returns the number of garbage collection events for the given garbage collector.
+       * @param garbageCollector the garbage collector name, not {@code null}
+       */
+      public Optional<Long> gcCountFor(String garbageCollector) {
+        Objects.requireNonNull(garbageCollector);
+        return Optional.of(gcInfo.get(garbageCollector)).transform(new Function<GarbageCollectorInfo, Long>() {
+          @Override
+          public Long apply(GarbageCollectorInfo input) {
+            return input.gcCount;
+          }
+        });
+      }
+    }
+
     private Optional<Long> getTotalGcTimeNanos(ProxyClient proxyClient) {
       long totalGcTime = 0L;
       try {
@@ -76,9 +154,22 @@ public class VirtualMachineValueExtractors {
         return Optional.absent();
       }
     }
+
     @Override
-    public Optional<Long> apply(ProxyClient proxyClient) {
-      return getTotalGcTimeNanos(proxyClient);
+    public Optional<GcInfoExtractor.GcInformation> apply(ProxyClient proxyClient) {
+      GcInformation gcInfo = new GcInformation();
+      try {
+        Collection<GarbageCollectorMXBean> gcBeans = proxyClient.getGarbageCollectorMXBeans();
+        for (GarbageCollectorMXBean gcBean : gcBeans) {
+          String gcName = gcBean.getName();
+          long gcCount = gcBean.getCollectionCount();
+          long gcTimeNanos = gcBean.getCollectionTime() * 1000000L; // to ns
+          gcInfo.addGcInfo(new GarbageCollectorInfo(gcName, gcCount, gcTimeNanos));
+        }
+        return Optional.of(gcInfo);
+      } catch (Exception e) {
+        return Optional.absent();
+      }
     }
   }
 
