@@ -5,10 +5,9 @@ import com.google.common.base.Optional;
 import com.google.common.collect.ImmutableList;
 import com.jvmtop.openjdk.tools.ProxyClient;
 
+import javax.management.MBeanServerConnection;
 import java.io.IOException;
-import java.lang.management.GarbageCollectorMXBean;
-import java.lang.management.OperatingSystemMXBean;
-import java.lang.management.ThreadMXBean;
+import java.lang.management.*;
 import java.lang.reflect.Method;
 import java.util.*;
 
@@ -23,6 +22,14 @@ public class VirtualMachineValueExtractors {
 
   public static GcInfoExtractor gcInfo() {
     return new GcInfoExtractor();
+  }
+
+  public static HeapInfoExtractor heapInfo() {
+    return new HeapInfoExtractor();
+  }
+
+  public static NonHeapInfoExtractor nonHeapInfo() {
+    return new NonHeapInfoExtractor();
   }
 
   /**
@@ -71,8 +78,6 @@ public class VirtualMachineValueExtractors {
       private final String gcName;
       private final long gcCount;
       private final long gcTimeNanos;
-
-      // TODO might be useful to classify young/old generation garbage collectors
 
       public GarbageCollectorInfo(String gcName, long gcCount, long gcTimeNanos) {
         this.gcName = gcName;
@@ -163,6 +168,95 @@ public class VirtualMachineValueExtractors {
         }
         return Optional.of(gcInfo);
       } catch (Exception e) {
+        return Optional.absent();
+      }
+    }
+  }
+
+  public static final class HeapInformation {
+    private final long heapSize;
+    private final long heapUsed;
+    private final long heapMax;
+
+    public HeapInformation(long heapSize, long heapUsed, long heapMax) {
+      this.heapSize = heapSize;
+      this.heapUsed = heapUsed;
+      this.heapMax = heapMax;
+    }
+
+    /**
+     * Returns the current size (amount of memory that is committed for the virtual machine to use) in bytes.
+     */
+    public long getHeapSize() {
+      return heapSize;
+    }
+
+    /**
+     * Returns the current amount of memory used (in bytes).
+     */
+    public long getHeapUsed() {
+      return heapUsed;
+    }
+
+    /**
+     * Returns the maximal heap size in bytes.
+     */
+    public long getHeapMax() {
+      return heapMax;
+    }
+  }
+
+  /**
+   * Collector for heap information (size, used, max).
+   * FIXME: For some reason, there is a difference in what JVisualVM shows (event though they access the same MXBean)
+   */
+  public static final class HeapInfoExtractor implements VirtualMachineValueExtractor<Optional<HeapInformation>> {
+    @Override
+    public Optional<HeapInformation> apply(ProxyClient proxyClient) {
+      try {
+        MemoryUsage heapUsage = proxyClient.getMemoryMXBean().getHeapMemoryUsage();
+        return Optional.of(new HeapInformation(heapUsage.getCommitted(), heapUsage.getUsed(), heapUsage.getMax()));
+      } catch (IOException e) {
+        return Optional.absent();
+      }
+    }
+  }
+
+  public static final class NonHeapInformation {
+    private final long nonHeapSize;
+    private final long nonHeapUsed;
+    private final long nonHeapMax;
+
+    public NonHeapInformation(long nonHeapSize, long nonHeapUsed, long nonHeapMax) {
+      this.nonHeapSize = nonHeapSize;
+      this.nonHeapUsed = nonHeapUsed;
+      this.nonHeapMax = nonHeapMax;
+    }
+
+    public long getNonHeapSize() {
+      return nonHeapSize;
+    }
+
+    public long getNonHeapUsed() {
+      return nonHeapUsed;
+    }
+
+    public long getNonHeapMax() {
+      return nonHeapMax;
+    }
+  }
+
+  /**
+   * Collector for non-heap (permgen, metaspace) information (size, used, max).
+   * FIXME: For some reason, there is a difference in what JVisualVM shows (event though they access the same MXBean)
+   */
+  public static final class NonHeapInfoExtractor implements VirtualMachineValueExtractor<Optional<NonHeapInformation>> {
+    @Override
+    public Optional<NonHeapInformation> apply(ProxyClient proxyClient) {
+      try {
+        MemoryUsage nonHeap = proxyClient.getMemoryMXBean().getNonHeapMemoryUsage();
+        return Optional.of(new NonHeapInformation(nonHeap.getCommitted(), nonHeap.getUsed(), nonHeap.getMax()));
+      } catch (IOException e) {
         return Optional.absent();
       }
     }

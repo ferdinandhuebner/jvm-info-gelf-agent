@@ -9,6 +9,8 @@ public final class VirtualMachineInformation {
     private GarbageCollectorInformation gcInfo;
     private Long totalCpuTime;
     private Long informationTime;
+    private VirtualMachineValueExtractors.HeapInformation heapInformation;
+    private VirtualMachineValueExtractors.NonHeapInformation nonHeapInformation;
 
     static VirtualMachineInformationBuilder create() {
       return new VirtualMachineInformationBuilder();
@@ -34,6 +36,16 @@ public final class VirtualMachineInformation {
       return this;
     }
 
+    public VirtualMachineInformationBuilder withHeapInformation(VirtualMachineValueExtractors.HeapInformation heapInformation) {
+      this.heapInformation = heapInformation;
+      return this;
+    }
+
+    public VirtualMachineInformationBuilder withNonHeapInformation(VirtualMachineValueExtractors.NonHeapInformation nonHeapInformation) {
+      this.nonHeapInformation = nonHeapInformation;
+      return this;
+    }
+
     private <T> T validateNotNull(T toValidate, String name) {
       if (toValidate == null)
         throw new IllegalArgumentException(name + " is null");
@@ -45,7 +57,9 @@ public final class VirtualMachineInformation {
               validateNotNull(informationTime, "informationTime"),
               validateNotNull(cpuLoad, "cpuLoad"),
               validateNotNull(gcInfo, "gcInfo"),
-              validateNotNull(totalCpuTime, "totalCpuTime"));
+              validateNotNull(totalCpuTime, "totalCpuTime"),
+              validateNotNull(heapInformation, "heapInformation"),
+              validateNotNull(nonHeapInformation, "nonHeapInformation"));
     }
   }
 
@@ -159,15 +173,21 @@ public final class VirtualMachineInformation {
 
   private final double cpuLoad;
   private final GarbageCollectorInformation gcInformation;
+  private final VirtualMachineValueExtractors.HeapInformation heapInformation;
+  private final VirtualMachineValueExtractors.NonHeapInformation nonHeapInformation;
 
   final long informationTime;
   final long totalCpu;
 
   VirtualMachineInformation(long informationTime, double cpuLoad,
-                            GarbageCollectorInformation gcInformation, long totalCpu) {
+                            GarbageCollectorInformation gcInformation, long totalCpu,
+                            VirtualMachineValueExtractors.HeapInformation heapInformation,
+                            VirtualMachineValueExtractors.NonHeapInformation nonHeapInformation) {
 
     this.cpuLoad = cpuLoad;
     this.gcInformation = gcInformation;
+    this.heapInformation = heapInformation;
+    this.nonHeapInformation = nonHeapInformation;
 
     this.informationTime = informationTime;
     this.totalCpu = totalCpu;
@@ -179,5 +199,13 @@ public final class VirtualMachineInformation {
 
   public GarbageCollectorInformation getGcInformation() {
     return gcInformation;
+  }
+
+  public VirtualMachineValueExtractors.HeapInformation getHeapInformation() {
+    return heapInformation;
+  }
+
+  public VirtualMachineValueExtractors.NonHeapInformation getNonHeapInformation() {
+    return nonHeapInformation;
   }
 }

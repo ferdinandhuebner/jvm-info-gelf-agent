@@ -4,6 +4,8 @@ import com.github.ferdinandhuebner.jvminfogelfagent.VirtualMachineInformation.De
 import com.github.ferdinandhuebner.jvminfogelfagent.VirtualMachineInformation.GarbageCollectorInformation;
 import com.github.ferdinandhuebner.jvminfogelfagent.VirtualMachineInformation.VirtualMachineInformationBuilder;
 import com.github.ferdinandhuebner.jvminfogelfagent.VirtualMachineValueExtractors.GcInfoExtractor.GcInformation;
+import com.github.ferdinandhuebner.jvminfogelfagent.VirtualMachineValueExtractors.HeapInformation;
+import com.github.ferdinandhuebner.jvminfogelfagent.VirtualMachineValueExtractors.NonHeapInformation;
 import com.google.common.base.Optional;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
@@ -38,12 +40,16 @@ class VirtualMachineInformationCollector {
 
   private final VirtualMachineValueExtractor<Optional<Long>> cpuTimeExtractor;
   private final VirtualMachineValueExtractor<Optional<GcInformation>> gcInfoExtractor;
+  private final VirtualMachineValueExtractor<Optional<HeapInformation>> heapInfoExtractor;
+  private final VirtualMachineValueExtractor<Optional<NonHeapInformation>> nonHeapInfoExtractor;
 
   public VirtualMachineInformationCollector(ProxyClient proxyClient) {
     this.proxyClient = proxyClient;
 
     cpuTimeExtractor = VirtualMachineValueExtractors.totalCpuUsed();
     gcInfoExtractor = VirtualMachineValueExtractors.gcInfo();
+    heapInfoExtractor = VirtualMachineValueExtractors.heapInfo();
+    nonHeapInfoExtractor = VirtualMachineValueExtractors.nonHeapInfo();
   }
 
   VirtualMachineInformation initialize() {
@@ -52,6 +58,10 @@ class VirtualMachineInformationCollector {
     vmInfoBuilder.withTotalCpu(cpuTimeExtractor.apply(proxyClient).or(0L));
     vmInfoBuilder.withGcInformation(getInitialGcInfo());
     vmInfoBuilder.withCpuLoad(0);
+    HeapInformation heapInfo = heapInfoExtractor.apply(proxyClient).or(new HeapInformation(0, 0, 0));
+    vmInfoBuilder.withHeapInformation(heapInfo);
+    NonHeapInformation nonHeapInfo = nonHeapInfoExtractor.apply(proxyClient).or(new NonHeapInformation(0, 0, 0));
+    vmInfoBuilder.withNonHeapInformation(nonHeapInfo);
 
     VirtualMachineInformation machineInformation = vmInfoBuilder.build();
     vmInfo.set(machineInformation);
@@ -150,8 +160,11 @@ class VirtualMachineInformationCollector {
 
       garbageCollectorInformation = new DetailedGarbageCollectorInformation(gcInfo.getTotalGcCount(),
               gcInfo.getTotalGcTimeNanos(),
-              newGcCounts, gcLoad, totalGcYoungEvents, newYoungGenGcEvents, totalGcOldEvents, newOldGenGcEvents,
-              totalGcYoungNanos, youngGcLoad, totalGcOldNanos, oldGcLoad, youngGenCollectors, oldGenCollectors);
+              newGcCounts, gcLoad < 0d ? 0d : gcLoad, totalGcYoungEvents, newYoungGenGcEvents,
+              totalGcOldEvents, newOldGenGcEvents,
+              totalGcYoungNanos, youngGcLoad < 0d ? 0d : youngGcLoad,
+              totalGcOldNanos, oldGcLoad < 0d ? 0d : oldGcLoad,
+              youngGenCollectors, oldGenCollectors);
     } else {
       garbageCollectorInformation = new GarbageCollectorInformation(gcInfo.getTotalGcCount(), gcInfo.getTotalGcTimeNanos(), 0L, 0d);
     }
@@ -160,21 +173,27 @@ class VirtualMachineInformationCollector {
 
   VirtualMachineInformation createVirtualMachineInformation() {
     VirtualMachineInformation last = vmInfo.get();
-    VirtualMachineInformationBuilder vmInfo = VirtualMachineInformationBuilder.create();
+    VirtualMachineInformationBuilder vmInfoBuilder = VirtualMachineInformationBuilder.create();
     long now = System.nanoTime();
     long deltaT = now - last.informationTime;
     long totalCpuTimeNanos = cpuTimeExtractor.apply(proxyClient).or(0L);
     long deltaCpu = totalCpuTimeNanos - last.totalCpu;
 
-    vmInfo.withInformationTime(now);
-    vmInfo.withTotalCpu(totalCpuTimeNanos);
+    vmInfoBuilder.withInformationTime(now);
+    vmInfoBuilder.withTotalCpu(totalCpuTimeNanos);
     double cpuLoad = ((double) deltaCpu) / deltaT;
     if (cpuLoad < 0d) { // strange things happen...
       cpuLoad = 0d;
     }
-    vmInfo.withCpuLoad(cpuLoad);
-    vmInfo.withGcInformation(getGcInfo(deltaT, last.getGcInformation()));
+    vmInfoBuilder.withCpuLoad(cpuLoad);
+    vmInfoBuilder.withGcInformation(getGcInfo(deltaT, last.getGcInformation()));
+    HeapInformation heapInfo = heapInfoExtractor.apply(proxyClient).or(new HeapInformation(0, 0, 0));
+    vmInfoBuilder.withHeapInformation(heapInfo);
+    NonHeapInformation nonHeapInfo = nonHeapInfoExtractor.apply(proxyClient).or(new NonHeapInformation(0, 0, 0));
+    vmInfoBuilder.withNonHeapInformation(nonHeapInfo);
 
-    return vmInfo.build();
+    VirtualMachineInformation value = vmInfoBuilder.build();
+    this.vmInfo.set(value);
+    return value;
   }
 }
