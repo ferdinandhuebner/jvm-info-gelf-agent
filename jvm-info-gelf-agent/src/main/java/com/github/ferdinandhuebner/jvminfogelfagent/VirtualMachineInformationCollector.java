@@ -42,6 +42,8 @@ class VirtualMachineInformationCollector {
   private final VirtualMachineValueExtractor<Optional<GcInformation>> gcInfoExtractor;
   private final VirtualMachineValueExtractor<Optional<HeapInformation>> heapInfoExtractor;
   private final VirtualMachineValueExtractor<Optional<NonHeapInformation>> nonHeapInfoExtractor;
+  private final VirtualMachineValueExtractor<Optional<Integer>> loadedClassesExtractor;
+  private final VirtualMachineValueExtractor<Optional<VirtualMachineValueExtractors.ThreadInformation>> threadInfoExtractor;
 
   public VirtualMachineInformationCollector(ProxyClient proxyClient) {
     this.proxyClient = proxyClient;
@@ -50,6 +52,8 @@ class VirtualMachineInformationCollector {
     gcInfoExtractor = VirtualMachineValueExtractors.gcInfo();
     heapInfoExtractor = VirtualMachineValueExtractors.heapInfo();
     nonHeapInfoExtractor = VirtualMachineValueExtractors.nonHeapInfo();
+    loadedClassesExtractor = VirtualMachineValueExtractors.loadedClasses();
+    threadInfoExtractor = VirtualMachineValueExtractors.threadInformation();
   }
 
   VirtualMachineInformation initialize() {
@@ -62,6 +66,16 @@ class VirtualMachineInformationCollector {
     vmInfoBuilder.withHeapInformation(heapInfo);
     NonHeapInformation nonHeapInfo = nonHeapInfoExtractor.apply(proxyClient).or(new NonHeapInformation(0, 0, 0));
     vmInfoBuilder.withNonHeapInformation(nonHeapInfo);
+    vmInfoBuilder.withLoadedClasses(loadedClassesExtractor.apply(proxyClient).or(0));
+
+    Optional<VirtualMachineValueExtractors.ThreadInformation> threadInfo = threadInfoExtractor.apply(proxyClient);
+    if (threadInfo.isPresent()) {
+      vmInfoBuilder.withThreadCount(threadInfo.get().getThreadCount());
+      vmInfoBuilder.withDaemonThreadCount(threadInfo.get().getDaemonCount());
+    } else {
+      vmInfoBuilder.withThreadCount(0);
+      vmInfoBuilder.withDaemonThreadCount(0);
+    }
 
     VirtualMachineInformation machineInformation = vmInfoBuilder.build();
     vmInfo.set(machineInformation);
@@ -191,6 +205,15 @@ class VirtualMachineInformationCollector {
     vmInfoBuilder.withHeapInformation(heapInfo);
     NonHeapInformation nonHeapInfo = nonHeapInfoExtractor.apply(proxyClient).or(new NonHeapInformation(0, 0, 0));
     vmInfoBuilder.withNonHeapInformation(nonHeapInfo);
+    vmInfoBuilder.withLoadedClasses(loadedClassesExtractor.apply(proxyClient).or(0));
+    Optional<VirtualMachineValueExtractors.ThreadInformation> threadInfo = threadInfoExtractor.apply(proxyClient);
+    if (threadInfo.isPresent()) {
+      vmInfoBuilder.withThreadCount(threadInfo.get().getThreadCount());
+      vmInfoBuilder.withDaemonThreadCount(threadInfo.get().getDaemonCount());
+    } else {
+      vmInfoBuilder.withThreadCount(0);
+      vmInfoBuilder.withDaemonThreadCount(0);
+    }
 
     VirtualMachineInformation value = vmInfoBuilder.build();
     this.vmInfo.set(value);

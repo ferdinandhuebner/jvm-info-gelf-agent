@@ -14,6 +14,8 @@ import java.util.Properties;
 /**
  * Convenience-Class to handle discovery and attachment to local virtual machines.
  * Wraps all com.sun classes into more convenient ones.
+ *
+ * TODO: Use JVisualVM code instead of jvmtop/jconsole
  */
 public class VirtualMachineManager {
 
@@ -207,7 +209,9 @@ public class VirtualMachineManager {
       out += " (" + longFormatter.format(heap.getHeapMax()) + " max)";
       VirtualMachineValueExtractors.NonHeapInformation nonHeap = vmInfo.getNonHeapInformation();
       out += "\nNon-Heap: " + longFormatter.format(nonHeap.getNonHeapUsed()) + " / " + longFormatter.format(nonHeap.getNonHeapSize());
-      out += " (" + longFormatter.format(nonHeap.getNonHeapMax()) + " max)";
+      out += " (" + longFormatter.format(nonHeap.getNonHeapMax()) + " max)\n";
+      out += "Loaded classes: " + vmInfo.getLoadedClasses() + "\n";
+      out += "Live threads: " + vmInfo.getThreadCount() + " (" + vmInfo.getDaemonThreadCount() + " daemon threads)";
       System.out.println(out);
       Thread.sleep(5000);
     }

@@ -6,6 +6,7 @@ import com.google.common.collect.ImmutableList;
 import com.jvmtop.openjdk.tools.ProxyClient;
 
 import javax.management.MBeanServerConnection;
+import javax.swing.text.html.Option;
 import java.io.IOException;
 import java.lang.management.*;
 import java.lang.reflect.Method;
@@ -30,6 +31,14 @@ public class VirtualMachineValueExtractors {
 
   public static NonHeapInfoExtractor nonHeapInfo() {
     return new NonHeapInfoExtractor();
+  }
+
+  public static LoadedClassesExtractor loadedClasses() {
+    return new LoadedClassesExtractor();
+  }
+
+  public static ThreadInformationExtractor threadInformation() {
+    return new ThreadInformationExtractor();
   }
 
   /**
@@ -256,6 +265,50 @@ public class VirtualMachineValueExtractors {
       try {
         MemoryUsage nonHeap = proxyClient.getMemoryMXBean().getNonHeapMemoryUsage();
         return Optional.of(new NonHeapInformation(nonHeap.getCommitted(), nonHeap.getUsed(), nonHeap.getMax()));
+      } catch (IOException e) {
+        return Optional.absent();
+      }
+    }
+  }
+
+  /**
+   * Collects the number of loaded classes.
+   */
+  public static final class LoadedClassesExtractor implements VirtualMachineValueExtractor<Optional<Integer>> {
+    @Override
+    public Optional<Integer> apply(ProxyClient proxyClient) {
+      try {
+        return Optional.of(proxyClient.getClassLoadingMXBean().getLoadedClassCount());
+      } catch (IOException e) {
+        return Optional.absent();
+      }
+    }
+  }
+
+  public static final class ThreadInformation {
+    private final int threadCount;
+    private final int daemonCount;
+
+    public ThreadInformation(int threadCount, int daemonCount) {
+      this.threadCount = threadCount;
+      this.daemonCount = daemonCount;
+    }
+
+    public int getThreadCount() {
+      return threadCount;
+    }
+
+    public int getDaemonCount() {
+      return daemonCount;
+    }
+  }
+
+  public static final class ThreadInformationExtractor implements VirtualMachineValueExtractor<Optional<ThreadInformation>> {
+    @Override
+    public Optional<ThreadInformation> apply(ProxyClient proxyClient) {
+      try {
+        ThreadMXBean threadBean = proxyClient.getThreadMXBean();
+        return Optional.of(new ThreadInformation(threadBean.getThreadCount(), threadBean.getDaemonThreadCount()));
       } catch (IOException e) {
         return Optional.absent();
       }

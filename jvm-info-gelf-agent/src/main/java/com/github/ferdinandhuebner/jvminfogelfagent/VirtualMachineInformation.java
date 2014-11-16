@@ -11,6 +11,9 @@ public final class VirtualMachineInformation {
     private Long informationTime;
     private VirtualMachineValueExtractors.HeapInformation heapInformation;
     private VirtualMachineValueExtractors.NonHeapInformation nonHeapInformation;
+    private Integer loadedClasses;
+    private Integer threadCount;
+    private Integer daemonThreadCount;
 
     static VirtualMachineInformationBuilder create() {
       return new VirtualMachineInformationBuilder();
@@ -46,6 +49,21 @@ public final class VirtualMachineInformation {
       return this;
     }
 
+    public VirtualMachineInformationBuilder withLoadedClasses(int loadedClasses) {
+      this.loadedClasses = loadedClasses;
+      return this;
+    }
+
+    public VirtualMachineInformationBuilder withThreadCount(int threadCount) {
+      this.threadCount = threadCount;
+      return this;
+    }
+
+    public VirtualMachineInformationBuilder withDaemonThreadCount(int daemonThreadCount) {
+      this.daemonThreadCount = daemonThreadCount;
+      return this;
+    }
+
     private <T> T validateNotNull(T toValidate, String name) {
       if (toValidate == null)
         throw new IllegalArgumentException(name + " is null");
@@ -59,7 +77,10 @@ public final class VirtualMachineInformation {
               validateNotNull(gcInfo, "gcInfo"),
               validateNotNull(totalCpuTime, "totalCpuTime"),
               validateNotNull(heapInformation, "heapInformation"),
-              validateNotNull(nonHeapInformation, "nonHeapInformation"));
+              validateNotNull(nonHeapInformation, "nonHeapInformation"),
+              validateNotNull(loadedClasses, "loadedClasses"),
+              validateNotNull(threadCount, "threadCount"),
+              validateNotNull(daemonThreadCount, "daemonThreadCount"));
     }
   }
 
@@ -175,6 +196,9 @@ public final class VirtualMachineInformation {
   private final GarbageCollectorInformation gcInformation;
   private final VirtualMachineValueExtractors.HeapInformation heapInformation;
   private final VirtualMachineValueExtractors.NonHeapInformation nonHeapInformation;
+  private final int loadedClasses;
+  private final int threadCount;
+  private final int daemonThreadCount;
 
   final long informationTime;
   final long totalCpu;
@@ -182,12 +206,16 @@ public final class VirtualMachineInformation {
   VirtualMachineInformation(long informationTime, double cpuLoad,
                             GarbageCollectorInformation gcInformation, long totalCpu,
                             VirtualMachineValueExtractors.HeapInformation heapInformation,
-                            VirtualMachineValueExtractors.NonHeapInformation nonHeapInformation) {
+                            VirtualMachineValueExtractors.NonHeapInformation nonHeapInformation,
+                            int loadedClasses, int threadCount, int daemonThreadCount) {
 
     this.cpuLoad = cpuLoad;
     this.gcInformation = gcInformation;
     this.heapInformation = heapInformation;
     this.nonHeapInformation = nonHeapInformation;
+    this.loadedClasses = loadedClasses;
+    this.threadCount = threadCount;
+    this.daemonThreadCount = daemonThreadCount;
 
     this.informationTime = informationTime;
     this.totalCpu = totalCpu;
@@ -195,6 +223,10 @@ public final class VirtualMachineInformation {
 
   public double getCpuLoad() {
     return cpuLoad;
+  }
+
+  public int getLoadedClasses() {
+    return this.loadedClasses;
   }
 
   public GarbageCollectorInformation getGcInformation() {
@@ -207,5 +239,13 @@ public final class VirtualMachineInformation {
 
   public VirtualMachineValueExtractors.NonHeapInformation getNonHeapInformation() {
     return nonHeapInformation;
+  }
+
+  public int getThreadCount() {
+    return threadCount;
+  }
+
+  public int getDaemonThreadCount() {
+    return daemonThreadCount;
   }
 }
