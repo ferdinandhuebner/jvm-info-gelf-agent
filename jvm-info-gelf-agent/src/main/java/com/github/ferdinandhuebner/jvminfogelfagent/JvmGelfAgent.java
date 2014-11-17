@@ -108,7 +108,7 @@ public class JvmGelfAgent implements Runnable {
       gelf.additionalField("_gc_old_gen_collectors", asString(gc.getOldGenerationGarbageCollectors()));
       gelf.additionalField("_gc_young_gen_load", gc.getYoungGenerationGcLoad());
       gelf.additionalField("_gc_young_gen_count", gc.getYoungGenerationGcCount());
-      gelf.additionalField("_gc_young_gen_collectors", asString(gc.getOldGenerationGarbageCollectors()));
+      gelf.additionalField("_gc_young_gen_collectors", asString(gc.getYoungGenerationGarbageCollectors()));
     } else {
       gelf.additionalField("_gc_load", gcInfo.getGcLoad());
       gelf.additionalField("_gc_count", gcInfo.getGcCount());
