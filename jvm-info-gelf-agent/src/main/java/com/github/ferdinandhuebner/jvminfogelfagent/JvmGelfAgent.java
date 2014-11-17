@@ -197,7 +197,7 @@ public class JvmGelfAgent implements Runnable {
   }
 
   private Optional<GelfTransport> getTcpTransport(String gelfTarget) {
-    String endpoint = gelfTarget.substring("tcp://".length() + 1);
+    String endpoint = gelfTarget.substring("tcp://".length());
     if (!endpoint.contains(":")) {
       LOG.error("Invalid TCP endpoint: " + gelfTarget + "(format: tcp://host:port");
       return Optional.absent();
@@ -222,7 +222,7 @@ public class JvmGelfAgent implements Runnable {
   }
 
   private Optional<GelfTransport> getUdpTransport(String gelfTarget) {
-    String endpoint = gelfTarget.substring("udp://".length() + 1);
+    String endpoint = gelfTarget.substring("udp://".length());
     if (!endpoint.contains(":")) {
       LOG.error("Invalid UDP endpoint: " + gelfTarget + "(format: udp://host:port");
       return Optional.absent();
